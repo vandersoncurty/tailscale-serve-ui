@@ -1,74 +1,85 @@
 name: tailscale-serve-ui
 services:
-  tailscale-serve-ui:
-    image: tailscale-serve-ui:latest
-    build:
-      context: .
-    container_name: tailscale-serve-ui
-    environment:
-      HOST: "0.0.0.0"
-      PORT: "8009"
-      UI_USER: ""
-      UI_PASSWORD: ""
-      TAILSCALE_BIN: "/usr/local/bin/tailscale"
-      DOCKER_SOCKET: "/var/run/docker.sock"
-      SERVE_HTTPS_PORT: "443"
-      TARGET_HOST: "127.0.0.1"
-      TAILSCALE_API_TOKEN: ""
-      TAILSCALE_API_BASE_URL: "https://api.tailscale.com"
-      TAILSCALE_TAILNET: "REDACTED"
-      TAILSCALE_DEVICE_ID: "debian"
-      TAILSCALE_API_TIMEOUT: "10"
-      PYTHONUNBUFFERED: "1"
-    ports:
-      - target: 8009
-        published: "8009"
-        protocol: tcp
-    restart: unless-stopped
-    volumes:
-      - type: bind
-        source: /var/run/tailscale
-        target: /var/run/tailscale
-      - type: bind
-        source: /usr/bin/tailscale
-        target: /usr/local/bin/tailscale
-        read_only: true
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-        read_only: true
-    labels:
-      icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/tailscale.png
-    x-casaos:
-      ports:
-        - container: "8009"
-          description:
-            en_US: Web UI port
-            pt_BR: Porta da interface web
+    tailscale-serve-ui:
+        build:
+            context: /home/vanderson/Projetos/tailscale-serve-ui
+            dockerfile: Dockerfile
+        cpu_shares: 90
+        command: []
+        container_name: tailscale-serve-ui
+        deploy:
+            resources:
+                limits:
+                    memory: "3967811584"
+        environment:
+            DOCKER_SOCKET: /var/run/docker.sock
+            HOST: 0.0.0.0
+            PORT: "8009"
+            PYTHONUNBUFFERED: "1"
+            SERVE_HTTPS_PORT: "443"
+            TAILSCALE_API_BASE_URL: https://api.tailscale.com
+            TAILSCALE_API_TIMEOUT: "10"
+            TAILSCALE_API_TOKEN: REDACTED
+            TAILSCALE_BIN: /usr/local/bin/tailscale
+            TAILSCALE_DEVICE_ID: debian
+            TAILSCALE_TAILNET: REDACTED
+            TARGET_HOST: 127.0.0.1
+            UI_PASSWORD: REDACTED
+            UI_USER: REDACTED
+        hostname: tailscale-serve-ui
+        image: tailscale-serve-ui:latest
+        labels:
+            icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/tailscale.png
+        networks:
+            default: null
+        ports:
+            - target: 8009
+              published: "8009"
+              protocol: tcp
+        restart: unless-stopped
+        volumes:
+            - type: bind
+              source: /var/run/tailscale
+              target: /var/run/tailscale
+            - type: bind
+              source: /usr/bin/tailscale
+              target: /usr/local/bin/tailscale
+              read_only: true
+            - type: bind
+              source: /var/run/docker.sock
+              target: /var/run/docker.sock
+              read_only: true
+        x-casaos:
+            ports:
+                - container: "8009"
+                  description:
+                    en_US: Web UI port
+                    pt_BR: Porta da interface web
 networks:
-  default:
-    name: tailscale-serve-ui_default
+    default:
+        name: tailscale-serve-ui_default
 x-casaos:
-  architectures:
-    - amd64
-    - arm64
-  author: Tailscale Serve UI contributors
-  category: Network
-  description:
-    en_US: Lightweight web interface to configure Tailscale Serve services.
-    pt_BR: Interface web leve para configurar serviços do Tailscale Serve.
-  developer: Tailscale Serve UI contributors
-  icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/tailscale.png
-  id: io.github.tailscale-serve-ui
-  index: /
-  is_uncontrolled: false
-  main: tailscale-serve-ui
-  port_map: "8009"
-  scheme: http
-  tagline:
-    en_US: Manage Tailscale Serve from your browser
-    pt_BR: Gerencie o Tailscale Serve pelo navegador
-  title:
-    custom: ""
-    en_US: Tailscale Serve UI
-    pt_BR: Tailscale Serve UI
+    architectures:
+        - amd64
+        - arm64
+    author: Tailscale Serve UI contributors
+    category: Network
+    description:
+        en_US: Lightweight web interface to configure Tailscale Serve services.
+        pt_BR: Interface web leve para configurar serviços do Tailscale Serve.
+    developer: Tailscale Serve UI contributors
+    hostname: tailscale-serve-ui-casaos.diplodocus-pain.ts.net
+    icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/tailscale.png
+    id: io.github.tailscale-serve-ui
+    index: /
+    is_uncontrolled: false
+    main: tailscale-serve-ui
+    port_map: ""
+    scheme: https
+    tagline:
+        en_US: Manage Tailscale Serve from your browser
+        pt_BR: Gerencie o Tailscale Serve pelo navegador
+    title:
+        custom: ""
+        en_US: Tailscale Serve UI
+        pt_BR: Tailscale Serve UI

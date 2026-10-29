@@ -1,4 +1,5 @@
 const CFG = { servePort: "443", targetHost: "127.0.0.1", apiConfigured: false, tailnet: "-", deviceId: "" };
+const SERVICE_RE_LOCAL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const $ = (id) => document.getElementById(id);
 const service = $("service");
 const port = $("port");
@@ -379,15 +380,20 @@ async function provisionService() {
   }
 }
 
-const SERVICE_RE_LOCAL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   out.hidden = true;
   clearSteps();
 
   if (useApi.checked) {
-    await provisionService();
+    try {
+      await provisionService();
+    } catch (err) {
+      showStep("Falha inesperada ao provisionar servico: " + esc(err.message), false);
+      showOutput(err.message, false);
+      submit.disabled = false;
+      submit.textContent = "Expor servico";
+    }
     return;
   }
 
