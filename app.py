@@ -144,6 +144,18 @@ def docker_get_json(path):
         connection.close()
 
 
+def sanitize_service_name(value):
+    name = str(value).strip().lower()
+    if name.startswith("svc:"):
+        name = name[4:]
+    name = re.sub(r"[^a-z0-9-]+", "-", name)
+    name = re.sub(r"-+", "-", name)
+    name = re.sub(r"^-|-$", "", name)
+    name = name[:63]
+    name = re.sub(r"-+$", "", name)
+    return name or "servico"
+
+
 def containers_payload():
     if not os.path.exists(DOCKER_SOCKET):
         log.error("Socket Docker nao encontrado: %s", DOCKER_SOCKET)
@@ -163,6 +175,13 @@ def containers_payload():
         }
     if not isinstance(data, list):
         return {"ok": False, "error": "Resposta inesperada da API do Docker.", "containers": []}
+
+    # Buscar serviços do Tailscale para verificar quais containers estao registrados
+    status_data = status_payload()
+    registered_names = set()
+    if status_data and status_data.get("ok"):
+        for svc in status_data.get("services", []):
+            registered_names.add(sanitize_service_name(svc.get("name", "")))
 
     containers = []
     for item in data:
@@ -186,6 +205,7 @@ def containers_payload():
             "name": name,
             "image": item.get("Image", ""),
             "ports": ports,
+            "registered": sanitize_service_name(name) in registered_names,
         })
     containers.sort(key=lambda container: container["name"].lower())
     return {"ok": True, "containers": containers}

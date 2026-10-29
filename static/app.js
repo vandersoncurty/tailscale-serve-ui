@@ -118,17 +118,7 @@ function emptyState(title, message, actionHtml) {
     esc(message) + "</p></div>" + (actionHtml || "") + "</div>";
 }
 
-function isServiceRegistered(containerName, registeredServices) {
-  const list = Array.isArray(registeredServices) ? registeredServices : [];
-  const normalized = sanitizeServiceName(containerName);
-  const exact = list.some((s) => s === normalized || s === "svc:" + normalized);
-  const partial = list.some((s) => normalized.includes(s) || s.includes(normalized));
-  const found = exact || partial;
-  console.log("[DEBUG] isServiceRegistered: container=", containerName, "normalized=", normalized, "list=", list, "exact=", exact, "partial=", partial, "found=", found);
-  return found;
-}
-
-function renderContainers(data, registeredServices, showAll) {
+function renderContainers(data, showAll) {
   if (!data.ok) {
     containersEl.innerHTML = emptyState(
       "Docker indisponível",
@@ -140,7 +130,7 @@ function renderContainers(data, registeredServices, showAll) {
 
   let containers = data.containers || [];
   if (!showAll) {
-    containers = containers.filter((c) => !isServiceRegistered(c.name, registeredServices));
+    containers = containers.filter((c) => !c.registered);
   }
 
   if (!containers.length) {
@@ -158,8 +148,7 @@ function renderContainers(data, registeredServices, showAll) {
   }
 
   containersEl.innerHTML = containers.map((item) => {
-    const registered = isServiceRegistered(item.name, registeredServices);
-    console.log("[DEBUG] renderContainers: container=", item.name, "registered=", registered);
+    const registered = item.registered;
     const statusDot = registered
       ? '<span class="container-status-dot container-status-dot--registered" aria-hidden="true"></span>'
       : '<span class="container-status-dot container-status-dot--pending" aria-hidden="true"></span>';
@@ -204,25 +193,7 @@ async function loadContainers() {
     const showAllEl = $("show-all-containers");
     const showAll = showAllEl ? showAllEl.checked : true;
 
-    let registeredServices = [];
-    try {
-      const statusData = await api("/api/status");
-      registeredServices = Array.isArray(statusData.services)
-        ? statusData.services.map((s) => {
-            const name = String(s.name || "").replace(/^svc:/, "");
-            return name;
-          })
-        : [];
-    } catch (err) {
-      registeredServices = [];
-    }
-
-    if (!Array.isArray(registeredServices)) {
-      registeredServices = [];
-    }
-
-    console.log("[DEBUG] loadContainers: showAll=", showAll, "registeredServices=", registeredServices, "containersCount=", containersData.containers?.length);
-    renderContainers(containersData, registeredServices, showAll);
+    renderContainers(containersData, showAll);
   } catch (err) {
     renderContainers({ ok: false, error: err.message });
   } finally {
