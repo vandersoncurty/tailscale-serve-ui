@@ -24,6 +24,10 @@
         <span class="status-dot" aria-hidden="true"></span>
         <span id="conn-text">Verificando</span>
       </div>
+      <div class="status status--idle" id="api-badge" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="api-text">API Tailscale: Verificando</span>
+      </div>
     </header>
 
     <main class="workspace">
@@ -52,6 +56,24 @@
                 placeholder="8080" required aria-describedby="port-help">
               <span class="field-help" id="port-help">Porta do serviço no host.</span>
             </label>
+
+            <label class="field" for="tag">
+              <span class="field-label">Tag da Tailnet</span>
+              <input id="tag" name="tag" type="text" placeholder="tag:meu-servico"
+                autocomplete="off" autocapitalize="none" spellcheck="false" required
+                aria-describedby="tag-help">
+              <span class="field-help" id="tag-help">Obrigatória. Identifica o serviço na Tailnet.</span>
+            </label>
+          </div>
+
+          <div class="field">
+            <label class="check" for="use-api">
+              <input id="use-api" name="use-api" type="checkbox" checked>
+              <span>
+                <span class="check-title">Criar e aprovar serviço via API Tailscale</span>
+                <span class="check-help">Cria o serviço no painel da Tailnet e aprova neste device automaticamente.</span>
+              </span>
+            </label>
           </div>
 
           <label class="check" for="https">
@@ -74,6 +96,7 @@
             <button class="button button--primary" id="submit" type="submit">Expor serviço</button>
           </div>
           <pre class="output" id="out" aria-live="polite" hidden></pre>
+          <div id="step-output" class="step-output" hidden></div>
         </form>
       </section>
 

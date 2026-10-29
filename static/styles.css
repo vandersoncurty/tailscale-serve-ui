@@ -487,6 +487,29 @@ input[type="number"] {
   overflow-wrap: anywhere;
 }
 
+.step-output {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.step-output--ok {
+  border-color: rgba(70, 211, 138, 0.35);
+  color: var(--ok);
+}
+
+.step-output--error {
+  border-color: rgba(255, 122, 122, 0.4);
+  color: var(--err);
+}
+
 .output--ok {
   border-color: rgba(70, 211, 138, 0.35);
 }

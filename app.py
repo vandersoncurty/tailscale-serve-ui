@@ -6,6 +6,8 @@ import os
 import re
 import socket
 import subprocess
+import urllib.error
+import urllib.request
 from http.client import HTTPConnection, HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -18,6 +20,12 @@ UI_PASSWORD = os.environ.get("UI_PASSWORD", "")
 SERVE_HTTPS_PORT = os.environ.get("SERVE_HTTPS_PORT", "443")
 TARGET_HOST = os.environ.get("TARGET_HOST", "127.0.0.1")
 SERVICE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+
+TAILSCALE_API_TOKEN = os.environ.get("TAILSCALE_API_TOKEN", "")
+TAILSCALE_API_BASE_URL = os.environ.get("TAILSCALE_API_BASE_URL", "https://api.tailscale.com").rstrip("/")
+TAILSCALE_TAILNET = os.environ.get("TAILSCALE_TAILNET", "-")
+TAILSCALE_DEVICE_ID = os.environ.get("TAILSCALE_DEVICE_ID", "")
+TAILSCALE_API_TIMEOUT = int(os.environ.get("TAILSCALE_API_TIMEOUT", "10"))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -138,6 +146,46 @@ def status_payload():
     return {"ok": True, "services": services}
 
 
+def service_full_name(name):
+    name = str(name).strip().lower()
+    if name.startswith("svc:"):
+        name = name[4:]
+    return "svc:" + name
+
+
+def tailscale_api_request(method, path, body=None):
+    if not TAILSCALE_API_TOKEN:
+        return None, {"ok": False, "error": "TAILSCALE_API_TOKEN não configurado."}
+    url = TAILSCALE_API_BASE_URL + path
+    data = None
+    headers = {
+        "Authorization": "Bearer " + TAILSCALE_API_TOKEN,
+        "Accept": "application/json",
+    }
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=TAILSCALE_API_TIMEOUT) as resp:
+            raw = resp.read()
+            try:
+                return resp.status, json.loads(raw.decode("utf-8") or "{}")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return resp.status, {"ok": True, "raw": raw.decode("utf-8", errors="replace")}
+    except urllib.error.HTTPError as exc:
+        try:
+            raw = exc.read()
+            try:
+                return exc.code, json.loads(raw.decode("utf-8") or "{}")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return exc.code, {"ok": False, "error": raw.decode("utf-8", errors="replace") or str(exc)}
+        except Exception:
+            return exc.code, {"ok": False, "error": str(exc)}
+    except Exception as exc:
+        return None, {"ok": False, "error": str(exc)}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TailscaleServeUI/1.0"
 
@@ -215,6 +263,29 @@ class Handler(BaseHTTPRequestHandler):
             })
         if self.path == "/api/health":
             return self._json(200, {"ok": True})
+        if self.path == "/api/tailscale/config":
+            return self._json(200, {
+                "ok": True,
+                "configured": bool(TAILSCALE_API_TOKEN),
+                "tailnet": TAILSCALE_TAILNET,
+                "deviceId": TAILSCALE_DEVICE_ID,
+            })
+        if self.path == "/api/tailscale/services":
+            status, payload = tailscale_api_request("GET", "/tailnet/%s/services" % TAILSCALE_TAILNET)
+            return self._json(status if status else 502, payload)
+        if self.path.startswith("/api/tailscale/services/"):
+            parts = self.path[len("/api/tailscale/services/"):].split("/")
+            name = parts[0] if len(parts) >= 1 else ""
+            if len(parts) == 1:
+                status, payload = tailscale_api_request("GET", "/tailnet/%s/services/%s" % (TAILSCALE_TAILNET, name))
+                return self._json(status if status else 502, payload)
+            if len(parts) == 3 and parts[1] == "devices":
+                status, payload = tailscale_api_request("GET", "/tailnet/%s/services/%s/devices" % (TAILSCALE_TAILNET, name))
+                return self._json(status if status else 502, payload)
+            if len(parts) == 5 and parts[1] == "device" and parts[3] == "approved":
+                device_id = parts[2]
+                status, payload = tailscale_api_request("GET", "/tailnet/%s/services/%s/device/%s/approved" % (TAILSCALE_TAILNET, name, device_id))
+                return self._json(status if status else 502, payload)
         return self._json(404, {"ok": False, "error": "Não encontrado"})
 
     def do_POST(self):
@@ -268,6 +339,85 @@ class Handler(BaseHTTPRequestHandler):
                 "exitCode": code,
                 "error": (stderr or ("O comando falhou com código %d." % code)) if code != 0 else "",
             })
+
+        if self.path.startswith("/api/tailscale/services/"):
+            parts = self.path[len("/api/tailscale/services/"):].split("/")
+            name = parts[0] if len(parts) >= 1 else ""
+            service = name[4:] if name.startswith("svc:") else name
+            if not SERVICE_RE.match(service):
+                return self._json(400, {"ok": False, "error": "Nome de serviço inválido."})
+
+            if len(parts) == 1:
+                tag = str(data.get("tag", "")).strip()
+                if not tag:
+                    return self._json(400, {"ok": False, "error": "Tag é obrigatória."})
+                if not tag.startswith("tag:"):
+                    tag = "tag:" + tag
+                body = {
+                    "name": "svc:" + service,
+                    "displayName": service,
+                    "comment": "Criado via Tailscale Serve UI",
+                    "ports": ["tcp:443"],
+                    "tags": [tag],
+                }
+                status, payload = tailscale_api_request("PUT", "/tailnet/%s/services/svc:%s" % (TAILSCALE_TAILNET, service), body)
+                return self._json(status if status else 502, payload)
+
+            if len(parts) == 2 and parts[1] == "delete":
+                status, payload = tailscale_api_request("DELETE", "/tailnet/%s/services/svc:%s" % (TAILSCALE_TAILNET, service))
+                return self._json(status if status else 502, payload)
+
+            if len(parts) == 4 and parts[1] == "device" and parts[3] == "approved":
+                device_id = parts[2]
+                approved = bool(data.get("approved", True))
+                status, payload = tailscale_api_request("POST", "/tailnet/%s/services/svc:%s/device/%s/approved" % (TAILSCALE_TAILNET, service, device_id), {"approved": approved})
+                return self._json(status if status else 502, payload)
+
+            if len(parts) == 2 and parts[1] == "provision":
+                tag = str(data.get("tag", "")).strip()
+                if not tag:
+                    return self._json(400, {"ok": False, "error": "Tag é obrigatória."})
+                if not tag.startswith("tag:"):
+                    tag = "tag:" + tag
+                try:
+                    local_port = int(data.get("port"))
+                except (TypeError, ValueError):
+                    return self._json(400, {"ok": False, "error": "Porta inválida."})
+                if not 1 <= local_port <= 65535:
+                    return self._json(400, {"ok": False, "error": "A porta deve estar entre 1 e 65535."})
+                use_https = bool(data.get("https"))
+                scheme = "https+insecure://" if use_https else "http://"
+                device_id = TAILSCALE_DEVICE_ID or (parts[2] if len(parts) >= 3 else "")
+                if not device_id:
+                    return self._json(400, {"ok": False, "error": "TAILSCALE_DEVICE_ID não configurado."})
+
+                # Etapa 1: criar serviço na Tailnet via API
+                body = {
+                    "name": "svc:" + service,
+                    "displayName": service,
+                    "comment": "Criado via Tailscale Serve UI",
+                    "ports": ["tcp:443"],
+                    "tags": [tag],
+                }
+                status, payload = tailscale_api_request("PUT", "/tailnet/%s/services/svc:%s" % (TAILSCALE_TAILNET, service), body)
+                if not status or status >= 400:
+                    return self._json(502, {"ok": False, "step": "api-create", "error": payload.get("error", "Falha ao criar serviço na Tailnet."), "apiResponse": payload})
+
+                # Etapa 2: executar comando tailscale serve no host
+                command = [
+                    "serve", "--service=svc:" + service, "--bg", "--https=" + SERVE_HTTPS_PORT,
+                    scheme + TARGET_HOST + ":" + str(local_port),
+                ]
+                code, stdout, stderr = run_tailscale(command)
+                if code != 0:
+                    return self._json(500, {"ok": False, "step": "local-serve", "error": stderr or ("O comando falhou com código %d." % code), "command": "tailscale " + " ".join(command), "stdout": stdout, "stderr": stderr})
+
+                # Etapa 3: aprovar serviço no device via API
+                status, payload = tailscale_api_request("POST", "/tailnet/%s/services/svc:%s/device/%s/approved" % (TAILSCALE_TAILNET, service, device_id), {"approved": True})
+                if not status or status >= 400:
+                    return self._json(502, {"ok": False, "step": "api-approve", "error": payload.get("error", "Falha ao aprovar serviço no device."), "apiResponse": payload, "command": "tailscale " + " ".join(command)})
+
+                return self._json(200, {"ok": True, "step": "complete", "message": "Serviço criado, executado e aprovado com sucesso.", "command": "tailscale " + " ".join(command), "apiResponse": payload})
 
         return self._json(404, {"ok": False, "error": "Não encontrado"})
 

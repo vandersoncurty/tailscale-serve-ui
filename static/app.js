@@ -1,15 +1,20 @@
-const CFG = { servePort: "443", targetHost: "127.0.0.1" };
+const CFG = { servePort: "443", targetHost: "127.0.0.1", apiConfigured: false, tailnet: "-", deviceId: "" };
 const $ = (id) => document.getElementById(id);
 const service = $("service");
 const port = $("port");
+const tag = $("tag");
 const https = $("https");
+const useApi = $("use-api");
 const cmdEl = $("cmd");
 const out = $("out");
+const stepOut = $("step-out");
 const form = $("form");
 const submit = $("submit");
 const list = $("list");
 const conn = $("conn");
 const connText = $("conn-text");
+const apiBadge = $("api-badge");
+const apiText = $("api-text");
 const containersEl = $("containers");
 const removeDialog = $("remove-dialog");
 
@@ -36,6 +41,18 @@ function showOutput(text, ok) {
   out.hidden = false;
   out.textContent = text;
   out.className = "output " + (ok ? "output--ok" : "output--error");
+}
+
+function showStep(text, ok) {
+  stepOut.hidden = false;
+  stepOut.textContent = text;
+  stepOut.className = "step-output " + (ok ? "step-output--ok" : "step-output--error");
+}
+
+function clearSteps() {
+  stepOut.hidden = true;
+  stepOut.textContent = "";
+  stepOut.className = "step-output";
 }
 
 async function api(path, body) {
@@ -68,6 +85,16 @@ function sanitizeServiceName(value) {
     .slice(0, 63)
     .replace(/-+$/g, "");
   return name || "servico";
+}
+
+function getCookie(name) {
+  const match = document.cookie.match("(?:^|; )" + name.replace(/([.$?*|{}()\[\]\\+^])/g, "\\$1") + "=([^;]*)");
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function setCookie(name, value, days) {
+  const expires = days ? "; expires=" + new Date(Date.now() + days * 86400000).toUTCString() : "";
+  document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/";
 }
 
 function loadingState(label) {
@@ -288,16 +315,85 @@ async function copyCommand() {
 service.addEventListener("input", renderCommand);
 port.addEventListener("input", renderCommand);
 https.addEventListener("change", renderCommand);
+tag.addEventListener("input", () => {
+  setCookie("tsui-tag", tag.value.trim(), 365);
+});
 $("copy-command").addEventListener("click", copyCommand);
 $("refresh").addEventListener("click", refreshServices);
 $("refresh-containers").addEventListener("click", loadContainers);
 
+async function provisionService() {
+  clearSteps();
+  const name = service.value.trim().toLowerCase();
+  if (!SERVICE_RE_LOCAL.test(name)) {
+    showStep("Nome de serviço inválido. Use letras minúsculas, números e hífens.", false);
+    return;
+  }
+  const tagValue = tag.value.trim();
+  if (!tagValue) {
+    showStep("Tag é obrigatória.", false);
+    return;
+  }
+  try {
+    const portNum = Number(port.value);
+    if (!portNum || portNum < 1 || portNum > 65535) {
+      showStep("Porta inválida.", false);
+      return;
+    }
+  } catch (err) {
+    showStep("Porta inválida.", false);
+    return;
+  }
+
+  submit.disabled = true;
+  submit.textContent = "Processando...";
+
+  try {
+    const payload = {
+      service: name,
+      port: Number(port.value),
+      tag: tagValue,
+      https: https.checked,
+    };
+    const data = await api("/api/tailscale/services/" + name + "/provision", payload);
+
+    if (data.ok) {
+      showStep("Sucesso: serviço criado, executado e aprovado na Tailnet.", true);
+      showOutput("$ " + (data.command || "") + "\n" + (data.message || "Serviço provisionado com sucesso."), true);
+      refreshServices();
+    } else {
+      const stepLabel = {
+        "api-create": "Etapa 1/3: criar serviço na Tailnet",
+        "local-serve": "Etapa 2/3: executar tailscale serve no host",
+        "api-approve": "Etapa 3/3: aprovar serviço no device",
+      }[data.step] || "Etapa desconhecida";
+      showStep(stepLabel + " falhou: " + (data.error || "erro desconhecido."), false);
+      showOutput("$ " + (data.command || "") + "\n" + (data.error || ""), false);
+    }
+  } catch (err) {
+    showStep("Falha ao provisionar serviço: " + esc(err.message), false);
+    showOutput(err.message, false);
+  } finally {
+    submit.disabled = false;
+    submit.textContent = "Expor serviço";
+  }
+}
+
+const SERVICE_RE_LOCAL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  out.hidden = true;
+  clearSteps();
+
+  if (useApi.checked) {
+    await provisionService();
+    return;
+  }
+
   const label = submit.textContent;
   submit.disabled = true;
   submit.textContent = "Expondo...";
-  out.hidden = true;
 
   const payload = {
     service: service.value.trim().toLowerCase(),
@@ -329,6 +425,28 @@ async function loadConfig() {
   }
   $("serve-port").textContent = CFG.servePort;
   renderCommand();
+
+  try {
+    const apiCfg = await api("/api/tailscale/config");
+    if (apiCfg.ok) {
+      CFG.apiConfigured = apiCfg.configured;
+      CFG.tailnet = apiCfg.tailnet;
+      CFG.deviceId = apiCfg.deviceId;
+      apiBadge.className = "status " + (apiCfg.configured ? "status--online" : "status--offline");
+      apiText.textContent = "API Tailscale: " + (apiCfg.configured ? "Configurada" : "Não configurada");
+    } else {
+      apiBadge.className = "status status--offline";
+      apiText.textContent = "API Tailscale: Não configurada";
+    }
+  } catch (err) {
+    apiBadge.className = "status status--offline";
+    apiText.textContent = "API Tailscale: Erro";
+  }
+
+  const savedTag = getCookie("tsui-tag");
+  if (savedTag) {
+    tag.value = savedTag;
+  }
 }
 
 async function init() {

@@ -119,6 +119,18 @@ https://<nome-do-servico>.<sua-tailnet>.ts.net
 
 Dependendo da configuração da tailnet, o administrador pode precisar aprovar o novo serviço.
 
+## Integração com a API Tailscale
+
+Para evitar abrir o admin console da Tailnet, a UI pode criar o serviço e aprová-lo automaticamente via API REST. Defina as variáveis `TAILSCALE_API_TOKEN`, `TAILSCALE_TAILNET` e `TAILSCALE_DEVICE_ID` no `docker-compose.yml`.
+
+O fluxo ao clicar em **Expor serviço** (com a opção API marcada) é:
+
+1. **Criar na Tailnet** — `PUT /tailnet/{tailnet}/services/svc:<nome>` com `ports: ["tcp:443"]` e a tag informada.
+2. **Executar no host** — `tailscale serve --service=svc:<nome> --bg --https=443 http://<target>:<porta>`.
+3. **Aprovar no device** — `POST /tailnet/{tailnet}/services/svc:<nome>/device/{deviceId}/approved` com `{"approved": true}`.
+
+Cada etapa exibe mensagem de sucesso ou erro na interface. Se qualquer etapa falhar, o fluxo para e mostra em qual etapa ocorreu o problema. O token nunca é exposto ao frontend nem a logs.
+
 ## Variáveis de ambiente
 
 As variáveis ficam na seção `environment` do `docker-compose.yml`.
@@ -133,6 +145,11 @@ As variáveis ficam na seção `environment` do `docker-compose.yml`.
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | Caminho do socket do Docker usado para detectar containers |
 | `SERVE_HTTPS_PORT` | `443` | Porta HTTPS publicada pelo `tailscale serve` |
 | `TARGET_HOST` | `127.0.0.1` | Host de destino usado no comando |
+| `TAILSCALE_API_TOKEN` | vazio | Access token da API Tailscale (escopos mínimos: `services`, `services:read`, `devices:core`) |
+| `TAILSCALE_API_BASE_URL` | `https://api.tailscale.com` | Base da API REST do Tailscale |
+| `TAILSCALE_TAILNET` | `-` | ID da tailnet (`-` = default do token) |
+| `TAILSCALE_DEVICE_ID` | vazio | ID/nodeId do device onde o serviço será aprovado |
+| `TAILSCALE_API_TIMEOUT` | `10` | Timeout da chamada à API em segundos |
 | `PYTHONUNBUFFERED` | `1` | Saída Python sem buffer nos logs |
 
 Ao alterar `PORT`, ajuste também o mapeamento em `ports` e o `port_map` do bloco `x-casaos`.
