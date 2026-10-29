@@ -121,7 +121,15 @@ function emptyState(title, message, actionHtml) {
 function isServiceRegistered(containerName, registeredServices) {
   const list = Array.isArray(registeredServices) ? registeredServices : [];
   const normalized = sanitizeServiceName(containerName);
-  return list.some((s) => s === normalized || s === "svc:" + normalized);
+  // Match exato ou com prefixo svc:
+  if (list.some((s) => s === normalized || s === "svc:" + normalized)) {
+    return true;
+  }
+  // Match parcial: o nome do serviço está contido no nome do container ou vice-versa
+  if (list.some((s) => normalized.includes(s) || s.includes(normalized))) {
+    return true;
+  }
+  return false;
 }
 
 function renderContainers(data, registeredServices, showAll) {
