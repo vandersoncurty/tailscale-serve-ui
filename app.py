@@ -526,28 +526,46 @@ def api_tailscale_service_provision_step(name):
         return jsonify({"ok": False, "error": "TAILSCALE_DEVICE_ID nao configurado."}), 400
 
     if step_number == 1:
-        # Etapa 1: criar/atualizar servico na Tailnet via API
-        log.info("Provisionamento passo 1: criar servico svc:%s na tailnet %s", resolved, TAILSCALE_TAILNET)
-        body = {
-            "name": "svc:" + resolved,
-            "displayName": resolved,
-            "comment": "Criado via Tailscale Serve UI",
-            "ports": ["tcp:443"],
-            "tags": [tag],
-        }
-        status, payload = tailscale_api_request("PUT", "/tailnet/%s/services/svc:%s" % (TAILSCALE_TAILNET, resolved), body)
-        if not status or status >= 400:
+        # Etapa 1: criar servico na Tailnet via API (pular se ja existir)
+        log.info("Provisionamento passo 1: verificar/criar servico svc:%s na tailnet %s", resolved, TAILSCALE_TAILNET)
+        status, payload = tailscale_api_request("GET", "/tailnet/%s/services/svc:%s" % (TAILSCALE_TAILNET, resolved))
+        if status == 200:
+            log.info("Servico svc:%s ja existe na Tailnet. Pulando criacao.", resolved)
             return jsonify({
-                "ok": False,
+                "ok": True,
                 "step": "api-create",
-                "error": payload.get("error", "Falha ao criar servico na Tailnet.") if payload else "Sem resposta da API",
-                "apiResponse": payload,
-            }), 502
+                "message": "Servico ja existe na Tailnet.",
+                "alreadyExists": True,
+            }), 200
+        if status == 404:
+            # Nao existe, criar novo
+            body = {
+                "name": "svc:" + resolved,
+                "displayName": resolved,
+                "comment": "Criado via Tailscale Serve UI",
+                "ports": ["tcp:443"],
+                "tags": [tag],
+            }
+            status, payload = tailscale_api_request("PUT", "/tailnet/%s/services/svc:%s" % (TAILSCALE_TAILNET, resolved), body)
+            if not status or status >= 400:
+                return jsonify({
+                    "ok": False,
+                    "step": "api-create",
+                    "error": payload.get("error", "Falha ao criar servico na Tailnet.") if payload else "Sem resposta da API",
+                    "apiResponse": payload,
+                }), 502
+            return jsonify({
+                "ok": True,
+                "step": "api-create",
+                "message": "Servico criado na Tailnet.",
+            }), 200
+        # Outro erro inesperado
         return jsonify({
-            "ok": True,
+            "ok": False,
             "step": "api-create",
-            "message": "Servico criado na Tailnet.",
-        }), 200
+            "error": payload.get("error", "Falha ao consultar servico na Tailnet.") if payload else "Sem resposta da API",
+            "apiResponse": payload,
+        }), 502
 
     return jsonify({"ok": False, "error": "Passo nao suportado neste endpoint."}), 400
 
