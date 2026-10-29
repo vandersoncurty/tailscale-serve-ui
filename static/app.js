@@ -119,8 +119,9 @@ function emptyState(title, message, actionHtml) {
 }
 
 function isServiceRegistered(containerName, registeredServices) {
+  const list = Array.isArray(registeredServices) ? registeredServices : [];
   const normalized = sanitizeServiceName(containerName);
-  return registeredServices.some((s) => s === normalized || s === "svc:" + normalized);
+  return list.some((s) => s === normalized || s === "svc:" + normalized);
 }
 
 function renderContainers(data, registeredServices, showAll) {
@@ -195,16 +196,26 @@ async function loadContainers() {
   containersEl.innerHTML = loadingState("Carregando containers...");
   try {
     const containersData = await api("/api/containers");
-    const showAll = $("show-all-containers").checked;
+    const showAllEl = $("show-all-containers");
+    const showAll = showAllEl ? showAllEl.checked : true;
 
     let registeredServices = [];
     if (!showAll) {
       try {
         const statusData = await api("/api/status");
-        registeredServices = (statusData.services || []).map((s) => s.name.replace(/^svc:/, ""));
+        registeredServices = Array.isArray(statusData.services)
+          ? statusData.services.map((s) => {
+              const name = String(s.name || "").replace(/^svc:/, "");
+              return name;
+            })
+          : [];
       } catch (err) {
         registeredServices = [];
       }
+    }
+
+    if (!Array.isArray(registeredServices)) {
+      registeredServices = [];
     }
 
     renderContainers(containersData, registeredServices, showAll);
