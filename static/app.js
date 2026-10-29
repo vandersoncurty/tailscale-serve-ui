@@ -121,18 +121,14 @@ function emptyState(title, message, actionHtml) {
 function isServiceRegistered(containerName, registeredServices) {
   const list = Array.isArray(registeredServices) ? registeredServices : [];
   const normalized = sanitizeServiceName(containerName);
-  console.log("[Tailscale UI] Comparando container:", containerName, "-> normalizado:", normalized, "| lista:", list);
-  // Match exato ou com prefixo svc:
+  // Match exato com ou sem prefixo svc:
   if (list.some((s) => s === normalized || s === "svc:" + normalized)) {
-    console.log("[Tailscale UI]  -> MATCH exato/svc:");
     return true;
   }
-  // Match parcial: o nome do serviço está contido no nome do container ou vice-versa
+  // Match parcial como fallback
   if (list.some((s) => normalized.includes(s) || s.includes(normalized))) {
-    console.log("[Tailscale UI]  -> MATCH parcial");
     return true;
   }
-  console.log("[Tailscale UI]  -> NAO REGISTRADO");
   return false;
 }
 
@@ -167,7 +163,6 @@ function renderContainers(data, registeredServices, showAll) {
 
   containersEl.innerHTML = containers.map((item) => {
     const registered = isServiceRegistered(item.name, registeredServices);
-    console.log("[Tailscale UI] Container:", item.name, "| registrado:", registered, "| showAll:", showAll, "| serviços:", registeredServices);
     const statusDot = registered
       ? '<span class="container-status-dot container-status-dot--registered" aria-hidden="true"></span>'
       : '<span class="container-status-dot container-status-dot--pending" aria-hidden="true"></span>';
@@ -230,8 +225,6 @@ async function loadContainers() {
     if (!Array.isArray(registeredServices)) {
       registeredServices = [];
     }
-
-    console.log("[Tailscale UI] loadContainers - showAll:", showAll, "| containers brutos:", containersData.containers?.length, "| registrados:", registeredServices);
 
     renderContainers(containersData, registeredServices, showAll);
   } catch (err) {
