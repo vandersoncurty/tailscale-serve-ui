@@ -227,6 +227,11 @@ def tailscale_api_request(method, path, body=None):
     headers = {
         "Authorization": "Bearer " + TAILSCALE_API_TOKEN,
         "Accept": "application/json",
+        "Origin": TAILSCALE_API_BASE_URL,
+        "Referer": TAILSCALE_API_BASE_URL + "/",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
     }
     if body is not None:
         data = json.dumps(body).encode("utf-8")
