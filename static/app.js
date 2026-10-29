@@ -208,18 +208,16 @@ async function loadContainers() {
     const showAll = showAllEl ? showAllEl.checked : true;
 
     let registeredServices = [];
-    if (!showAll) {
-      try {
-        const statusData = await api("/api/status");
-        registeredServices = Array.isArray(statusData.services)
-          ? statusData.services.map((s) => {
-              const name = String(s.name || "").replace(/^svc:/, "");
-              return name;
-            })
-          : [];
-      } catch (err) {
-        registeredServices = [];
-      }
+    try {
+      const statusData = await api("/api/status");
+      registeredServices = Array.isArray(statusData.services)
+        ? statusData.services.map((s) => {
+            const name = String(s.name || "").replace(/^svc:/, "");
+            return name;
+          })
+        : [];
+    } catch (err) {
+      registeredServices = [];
     }
 
     if (!Array.isArray(registeredServices)) {
