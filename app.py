@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import base64
 import hmac
-import html
 import json
 import os
 import re
@@ -20,409 +19,14 @@ SERVE_HTTPS_PORT = os.environ.get("SERVE_HTTPS_PORT", "443")
 TARGET_HOST = os.environ.get("TARGET_HOST", "127.0.0.1")
 SERVICE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
-PAGE = r"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tailscale Serve</title>
-<style>
-  :root {
-    color-scheme: dark;
-    --bg: #0b0f14;
-    --panel: #121821;
-    --panel-2: #0e141c;
-    --border: #223042;
-    --text: #e6edf5;
-    --muted: #8ea0b5;
-    --accent: #4f9cff;
-    --accent-2: #2f7be0;
-    --ok: #35d07f;
-    --err: #ff6b6b;
-    --warn: #f5b942;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    background:
-      radial-gradient(900px 500px at 15% -10%, rgba(79,156,255,.16), transparent 60%),
-      radial-gradient(700px 400px at 100% 0%, rgba(53,208,127,.08), transparent 55%),
-      var(--bg);
-    color: var(--text);
-  }
-  header {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 34px 20px 10px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .logo {
-    width: 46px; height: 46px; border-radius: 13px;
-    display: grid; place-items: center;
-    font-weight: 800; letter-spacing: -.5px;
-    background: linear-gradient(150deg, var(--accent), #1d4f91);
-    box-shadow: 0 8px 24px rgba(79,156,255,.28);
-  }
-  h1 { margin: 0; font-size: 22px; letter-spacing: -.3px; }
-  header p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
-  .badge {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 7px 11px; border: 1px solid var(--border);
-    border-radius: 999px; font-size: 12px; color: var(--muted);
-    background: rgba(18,24,33,.7);
-  }
-  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
-  .badge.online .dot { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
-  .badge.offline .dot { background: var(--err); }
-  main { max-width: 900px; margin: 0 auto; padding: 16px 20px 50px; display: grid; gap: 16px; }
-  .card {
-    background: linear-gradient(180deg, rgba(18,24,33,.96), rgba(14,20,28,.96));
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 22px;
-    box-shadow: 0 20px 50px rgba(0,0,0,.22);
-  }
-  h2 { margin: 0 0 16px; font-size: 15px; letter-spacing: .2px; }
-  .grid { display: grid; grid-template-columns: 1.4fr .8fr; gap: 14px; }
-  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
-  label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--muted); }
-  input[type=text], input[type=number] {
-    width: 100%; padding: 12px 13px;
-    color: var(--text); background: var(--panel-2);
-    border: 1px solid var(--border); border-radius: 10px;
-    font: inherit; font-size: 14px; outline: none;
-    transition: border-color .15s, box-shadow .15s;
-  }
-  input[type=text]:focus, input[type=number]:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(79,156,255,.16);
-  }
-  .check {
-    flex-direction: row; align-items: flex-start; gap: 11px;
-    margin: 16px 0 4px; padding: 13px 14px;
-    background: rgba(79,156,255,.05);
-    border: 1px solid var(--border); border-radius: 11px;
-    cursor: pointer; color: var(--text); font-size: 13px;
-  }
-  .check input { margin-top: 2px; width: 17px; height: 17px; accent-color: var(--accent); }
-  .check small { display: block; color: var(--muted); margin-top: 3px; font-size: 11.5px; }
-  .preview {
-    margin: 16px 0; padding: 12px 14px;
-    background: #080c11; border: 1px solid var(--border);
-    border-radius: 10px; overflow-x: auto;
-  }
-  .preview span { display: block; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; color: #bcd6ff; white-space: nowrap; }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-  .row h2 { margin: 0; }
-  button {
-    font: inherit; font-size: 13px; font-weight: 600;
-    padding: 11px 17px; border: 0; border-radius: 10px;
-    color: #fff; background: linear-gradient(180deg, var(--accent), var(--accent-2));
-    cursor: pointer; transition: transform .1s, filter .15s;
-  }
-  button:hover { filter: brightness(1.08); }
-  button:active { transform: translateY(1px); }
-  button:disabled { opacity: .55; cursor: wait; }
-  button.ghost {
-    color: var(--muted); background: transparent;
-    border: 1px solid var(--border); font-weight: 500;
-  }
-  button.danger { color: var(--err); background: transparent; border: 1px solid rgba(255,107,107,.35); padding: 8px 12px; font-weight: 500; }
-  button.danger:hover { background: rgba(255,107,107,.08); }
-  .terminal {
-    margin: 16px 0 0; padding: 14px;
-    background: #070a0e; border: 1px solid var(--border);
-    border-radius: 10px; font-size: 12.5px; line-height: 1.55;
-    white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto;
-  }
-  .terminal.ok { border-color: rgba(53,208,127,.35); }
-  .terminal.err { border-color: rgba(255,107,107,.4); }
-  .svc {
-    border: 1px solid var(--border); border-radius: 12px;
-    padding: 15px 16px; background: rgba(8,12,17,.55);
-  }
-  .svc + .svc { margin-top: 11px; }
-  .svc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .svc-name { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 14px; }
-  .svc-name .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px rgba(53,208,127,.7); }
-  .route {
-    margin-top: 11px; display: grid; gap: 7px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px; color: var(--muted);
-  }
-  .route div { display: flex; gap: 9px; flex-wrap: wrap; align-items: baseline; }
-  .route b { color: var(--text); font-weight: 500; }
-  .route .arrow { color: var(--muted); }
-  .route .target { color: #9fe3bd; }
-  .docker-item {
-    border: 1px solid var(--border); border-radius: 12px;
-    padding: 14px 16px; background: rgba(8,12,17,.55);
-  }
-  .docker-item + .docker-item { margin-top: 10px; }
-  .docker-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-  .docker-name { font-weight: 650; font-size: 14px; }
-  .docker-image { color: var(--muted); font-size: 11.5px; margin-top: 3px; word-break: break-all; }
-  .ports { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 11px; }
-  .ports .label { color: var(--muted); font-size: 11.5px; margin-right: 2px; }
-  button.chip {
-    padding: 6px 10px; font-size: 12px; font-weight: 500;
-    color: var(--text); background: rgba(79,156,255,.08);
-    border: 1px solid var(--border); border-radius: 8px;
-  }
-  button.chip:hover { background: rgba(79,156,255,.16); border-color: var(--accent); filter: none; }
-  button.small { padding: 7px 11px; font-size: 12px; }
-  .muted { color: var(--muted); font-size: 12px; }
-  .hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin: -8px 0 14px; }
-  .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
-  .foot { max-width: 900px; margin: 0 auto; padding: 0 20px 34px; color: #5f7084; font-size: 11.5px; line-height: 1.6; }
-  .foot code { color: #7f93aa; }
-</style>
-</head>
-<body>
-<header>
-  <div class="brand">
-    <div class="logo">TS</div>
-    <div>
-      <h1>Tailscale Serve</h1>
-      <p>Exponha serviços locais na sua tailnet</p>
-    </div>
-  </div>
-  <span class="badge" id="conn"><span class="dot"></span><span id="conn-text">Verificando</span></span>
-</header>
-<main>
-  <section class="card">
-    <div class="row">
-      <h2>Containers em execução</h2>
-      <button class="ghost" id="refresh-containers" type="button">Atualizar</button>
-    </div>
-    <p class="hint">Clique em uma porta publicada para preencher nome e porta. O nome do serviço pode ser editado antes de expor.</p>
-    <div id="containers"><div class="empty">Carregando...</div></div>
-  </section>
-
-  <section class="card">
-    <h2>Novo serviço</h2>
-    <form id="form">
-      <div class="grid">
-        <label>Nome do serviço
-          <input id="service" type="text" placeholder="meu-servico" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?">
-        </label>
-        <label>Porta local
-          <input id="port" type="number" min="1" max="65535" placeholder="8080" required>
-        </label>
-      </div>
-      <label class="check">
-        <input id="https" type="checkbox">
-        <span>O serviço de destino já usa HTTPS
-          <small>Usa <code>https+insecure://</code>, para certificados autoassinados ou inválidos.</small>
-        </span>
-      </label>
-      <div class="preview">
-        <span>Comando</span>
-        <code id="cmd"></code>
-      </div>
-      <button type="submit" id="submit">Expor serviço</button>
-      <pre class="terminal" id="out" hidden></pre>
-    </form>
-  </section>
-
-  <section class="card">
-    <div class="row">
-      <h2>Serviços configurados</h2>
-      <button class="ghost" id="refresh" type="button">Atualizar</button>
-    </div>
-    <div id="list"><div class="empty">Carregando...</div></div>
-  </section>
-</main>
-<div class="foot">
-  Os comandos são executados dentro do container, usando o socket do <code>tailscaled</code> do host. Serviços são publicados em <code>https://&lt;svc&gt;.&lt;tailnet&gt;.ts.net</code> na porta <span id="serve-port"></span>.
-</div>
-
-<script>
-const CFG = {servePort: "__SERVE_PORT__", targetHost: "__TARGET_HOST__"};
-const $ = (id) => document.getElementById(id);
-const service = $("service"), port = $("port"), https = $("https");
-const cmdEl = $("cmd"), out = $("out"), form = $("form"), submit = $("submit");
-const list = $("list"), conn = $("conn"), connText = $("conn-text");
-const containersEl = $("containers");
-
-$("serve-port").textContent = CFG.servePort;
-
-function target() {
-  const scheme = https.checked ? "https+insecure://" : "http://";
-  return scheme + CFG.targetHost + ":" + (port.value || "<porta>");
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+    "/app.js": ("app.js", "application/javascript; charset=utf-8"),
 }
-function command() {
-  return "tailscale serve --service=svc:" + (service.value.trim().toLowerCase() || "<serviço>") +
-    " --bg --https=" + CFG.servePort + " " + target();
-}
-function renderCommand() { cmdEl.textContent = command(); }
-service.addEventListener("input", renderCommand);
-port.addEventListener("input", renderCommand);
-https.addEventListener("change", renderCommand);
-renderCommand();
-
-function showOutput(text, ok) {
-  out.hidden = false;
-  out.textContent = text;
-  out.className = "terminal " + (ok ? "ok" : "err");
-}
-
-async function api(path, body) {
-  const opts = body === undefined ? {} : {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(body)
-  };
-  const res = await fetch(path, opts);
-  const data = await res.json().catch(() => ({ok: false, error: "Resposta inválida do servidor"}));
-  if (!res.ok) throw new Error(data.error || data.stderr || ("HTTP " + res.status));
-  return data;
-}
-
-function esc(v) {
-  return String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-}
-
-function sanitizeServiceName(value) {
-  const name = String(value).toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 63)
-    .replace(/-+$/g, "");
-  return name || "servico";
-}
-
-function renderContainers(data) {
-  if (!data.ok) {
-    containersEl.innerHTML = '<div class="empty">' + esc(data.error || "Docker indisponível.") +
-      ' Você ainda pode informar nome e porta manualmente.</div>';
-    return;
-  }
-  const containers = data.containers || [];
-  if (!containers.length) {
-    containersEl.innerHTML = '<div class="empty">Nenhum container em execução encontrado.</div>';
-    return;
-  }
-  containersEl.innerHTML = containers.map(item => {
-    const ports = item.ports || [];
-    const actions = ports.length
-      ? ports.map(p => '<button class="chip" type="button" data-container="' + esc(item.name) +
-          '" data-port="' + p.public + '" title="Porta publicada: ' + p.public +
-          ' | Porta interna: ' + esc(p.private) + '">' + p.public +
-          (p.private && p.private !== p.public ? ' → ' + p.private : '') + '</button>').join("")
-      : '<button class="ghost small" type="button" data-container="' + esc(item.name) + '">Usar nome</button>';
-    return '<div class="docker-item"><div class="docker-head"><div><div class="docker-name">' + esc(item.name) +
-      '</div><div class="docker-image">' + esc(item.image) + '</div></div></div>' +
-      '<div class="ports"><span class="label">' + (ports.length ? "Portas publicadas:" : "Sem portas TCP publicadas.") +
-      '</span>' + actions + '</div></div>';
-  }).join("");
-}
-
-async function loadContainers() {
-  containersEl.innerHTML = '<div class="empty">Carregando...</div>';
-  try {
-    renderContainers(await api("/api/containers"));
-  } catch (err) {
-    containersEl.innerHTML = '<div class="empty">Não foi possível consultar o Docker: ' + esc(err.message) + '</div>';
-  }
-}
-
-containersEl.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-container]");
-  if (!button) return;
-  service.value = sanitizeServiceName(button.dataset.container);
-  if (button.dataset.port) port.value = button.dataset.port;
-  renderCommand();
-  service.focus();
-  service.select();
-});
-
-function renderStatus(data) {
-  if (!data.ok) {
-    conn.className = "badge offline";
-    connText.textContent = "Tailscale indisponível";
-    list.innerHTML = '<div class="empty">Não foi possível consultar o Tailscale: ' + esc(data.error || "erro") + "</div>";
-    return;
-  }
-  conn.className = "badge online";
-  connText.textContent = "Tailscale conectado";
-  const services = data.services || [];
-  if (!services.length) {
-    list.innerHTML = '<div class="empty">Nenhum serviço configurado ainda.</div>';
-    return;
-  }
-  list.innerHTML = services.map(svc => {
-    const routes = (svc.entries || []).map(e =>
-      '<div><b>' + esc(e.host) + '</b><span class="arrow">→</span><span>' + esc(e.path) + '</span><span class="arrow">→</span><span class="target">' + esc(e.proxy || "tcp") + '</span></div>'
-    ).join("");
-    return '<div class="svc"><div class="svc-head"><div class="svc-name"><span class="dot"></span>' + esc(svc.name) +
-      '</div><button class="danger" type="button" data-clear="' + esc(svc.name) + '">Remover</button></div>' +
-      '<div class="route">' + (routes || '<div><span class="target">Sem rotas web</span></div>') + "</div></div>";
-  }).join("");
-  list.querySelectorAll("[data-clear]").forEach(btn => {
-    btn.addEventListener("click", () => clearService(btn.dataset.clear, btn));
-  });
-}
-
-async function refresh() {
-  try {
-    renderStatus(await api("/api/status"));
-  } catch (err) {
-    renderStatus({ok: false, error: err.message});
-  }
-}
-
-async function clearService(name, btn) {
-  if (!confirm("Remover a configuração de " + name + "?")) return;
-  btn.disabled = true;
-  try {
-    const data = await api("/api/clear", {service: name.replace(/^svc:/, "")});
-    showOutput("$ " + data.command + "\n" + (data.stdout || data.stderr || "Configuração removida."), true);
-  } catch (err) {
-    showOutput(err.message, false);
-  } finally {
-    btn.disabled = false;
-    refresh();
-  }
-}
-
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  submit.disabled = true;
-  const payload = {
-    service: service.value.trim().toLowerCase(),
-    port: Number(port.value),
-    https: https.checked
-  };
-  try {
-    const data = await api("/api/serve", payload);
-    showOutput("$ " + data.command + "\n" + (data.stdout || data.stderr || "Serviço configurado com sucesso."), true);
-    refresh();
-  } catch (err) {
-    showOutput(err.message, false);
-  } finally {
-    submit.disabled = false;
-  }
-});
-
-$("refresh").addEventListener("click", refresh);
-$("refresh-containers").addEventListener("click", loadContainers);
-refresh();
-loadContainers();
-setInterval(refresh, 10000);
-</script>
-</body>
-</html>
-"""
 
 
 def run_tailscale(args, timeout=30):
@@ -574,6 +178,14 @@ class Handler(BaseHTTPRequestHandler):
             "WWW-Authenticate": 'Basic realm="Tailscale Serve"'
         })
 
+    def _static(self, filename, content_type):
+        try:
+            with open(os.path.join(STATIC_DIR, filename), "rb") as handle:
+                body = handle.read()
+        except OSError:
+            return self._json(500, {"ok": False, "error": "Arquivo estático não encontrado."})
+        return self._send(200, body, content_type)
+
     def _body(self):
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -589,14 +201,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._authorized():
             return self._unauthorized()
-        if self.path in ("/", "/index.html"):
-            page = PAGE.replace("__SERVE_PORT__", html.escape(SERVE_HTTPS_PORT, quote=True))
-            page = page.replace("__TARGET_HOST__", html.escape(TARGET_HOST, quote=True))
-            return self._send(200, page, "text/html; charset=utf-8")
+        if self.path in STATIC_FILES:
+            return self._static(*STATIC_FILES[self.path])
         if self.path == "/api/status":
             return self._json(200, status_payload())
         if self.path == "/api/containers":
             return self._json(200, containers_payload())
+        if self.path == "/api/config":
+            return self._json(200, {
+                "ok": True,
+                "serveHttpsPort": SERVE_HTTPS_PORT,
+                "targetHost": TARGET_HOST,
+            })
         if self.path == "/api/health":
             return self._json(200, {"ok": True})
         return self._json(404, {"ok": False, "error": "Não encontrado"})

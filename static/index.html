@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Interface web para configurar serviços do Tailscale Serve.">
+  <title>Tailscale Serve</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d1621'/%3E%3Cpath d='M9 9h14v3.5H9zm0 6.5h9V19H9zm0 6h14V25H9z' fill='%2363b3ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">TS</div>
+        <div class="brand-copy">
+          <h1>Tailscale Serve</h1>
+          <p>Exponha serviços locais na sua tailnet</p>
+        </div>
+      </div>
+      <div class="status status--idle" id="conn" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="conn-text">Verificando</span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="panel panel--compose" aria-labelledby="compose-title">
+        <header class="panel-head">
+          <div>
+            <h2 id="compose-title">Novo serviço</h2>
+            <p class="panel-sub">Publique uma porta local com um subdomínio da tailnet.</p>
+          </div>
+        </header>
+
+        <form id="form">
+          <div class="field-grid">
+            <label class="field" for="service">
+              <span class="field-label">Nome do serviço</span>
+              <input id="service" name="service" type="text" placeholder="meu-servico"
+                autocomplete="off" autocapitalize="none" spellcheck="false" required
+                pattern="[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+                aria-describedby="service-help">
+              <span class="field-help" id="service-help">Letras minúsculas, números e hífens.</span>
+            </label>
+
+            <label class="field" for="port">
+              <span class="field-label">Porta local</span>
+              <input id="port" name="port" type="number" inputmode="numeric" min="1" max="65535"
+                placeholder="8080" required aria-describedby="port-help">
+              <span class="field-help" id="port-help">Porta do serviço no host.</span>
+            </label>
+          </div>
+
+          <label class="check" for="https">
+            <input id="https" name="https" type="checkbox">
+            <span>
+              <span class="check-title">O destino já usa HTTPS</span>
+              <span class="check-help">Usa <code>https+insecure://</code> para certificados autoassinados ou inválidos.</span>
+            </span>
+          </label>
+
+          <div class="command">
+            <div class="command-head">
+              <span>Prévia do comando</span>
+              <button class="button button--quiet button--small" id="copy-command" type="button">Copiar</button>
+            </div>
+            <code id="cmd"></code>
+          </div>
+
+          <div class="compose-actions">
+            <button class="button button--primary" id="submit" type="submit">Expor serviço</button>
+          </div>
+          <pre class="output" id="out" aria-live="polite" hidden></pre>
+        </form>
+      </section>
+
+      <aside class="panel panel--containers" aria-labelledby="containers-title">
+        <header class="panel-head">
+          <div>
+            <h2 id="containers-title">Containers</h2>
+            <p class="panel-sub">Portas publicadas disponíveis.</p>
+          </div>
+          <button class="button button--quiet button--small" id="refresh-containers" type="button">Atualizar</button>
+        </header>
+        <p class="hint">Clique em uma porta para preencher o formulário.</p>
+        <div class="container-list" id="containers">
+          <div class="state"><p>Carregando containers...</p></div>
+        </div>
+      </aside>
+
+      <section class="panel panel--services" aria-labelledby="services-title">
+        <header class="panel-head">
+          <div>
+            <h2 id="services-title">Serviços configurados</h2>
+            <p class="panel-sub">Rotas ativas nesta máquina.</p>
+          </div>
+          <button class="button button--quiet button--small" id="refresh" type="button">Atualizar</button>
+        </header>
+        <div class="service-list" id="list">
+          <div class="state"><p>Carregando serviços...</p></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        Os comandos são executados dentro do container, usando o socket do <code>tailscaled</code> do host.
+        Serviços são publicados em <code>https://&lt;svc&gt;.&lt;tailnet&gt;.ts.net</code> na porta
+        <span id="serve-port">443</span>.
+      </p>
+    </footer>
+  </div>
+
+  <dialog class="dialog" id="remove-dialog" aria-labelledby="remove-title">
+    <form method="dialog" class="dialog-body">
+      <div class="dialog-copy">
+        <h2 id="remove-title">Remover serviço?</h2>
+        <p id="remove-message">Essa ação não pode ser desfeita.</p>
+      </div>
+      <div class="dialog-actions">
+        <button class="button button--quiet" value="cancel" type="submit">Cancelar</button>
+        <button class="button button--danger-solid" value="confirm" type="submit">Remover</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

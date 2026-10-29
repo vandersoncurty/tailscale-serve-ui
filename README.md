@@ -47,6 +47,22 @@ tailscale serve --service=svc:meu-servico --bg --https=443 https+insecure://127.
 
 O `127.0.0.1` é resolvido pelo `tailscaled` no host, não dentro do container.
 
+## Estrutura do projeto
+
+```text
+.
+├── app.py                  # Servidor HTTP e APIs
+├── static/
+│   ├── index.html          # Estrutura da interface
+│   ├── styles.css          # Tema e layout
+│   └── app.js              # Comportamento da interface
+├── Dockerfile
+├── docker-compose.yml
+└── README.md
+```
+
+O frontend é servido diretamente pelo `app.py`, sem etapa de build. As configurações públicas usadas pela interface (`SERVE_HTTPS_PORT` e `TARGET_HOST`) são expostas pelo endpoint `/api/config`.
+
 ## Uso rápido
 
 ```bash
@@ -208,6 +224,17 @@ docker inspect tailscale-serve-ui --format '{{json .Mounts}}'
 ```
 
 Se o socket estiver em outro caminho, ajuste o volume e a variável `DOCKER_SOCKET` no `docker-compose.yml`. Sem o socket, a interface continua funcionando com preenchimento manual de nome e porta.
+
+### Erro ao carregar a interface
+
+A imagem precisa incluir a pasta `static/`. Reconstrua a imagem após alterar os arquivos do frontend:
+
+```bash
+docker compose build --no-cache
+docker compose up -d --force-recreate
+```
+
+Se a interface abrir sem estilos ou sem comportamento, confirme que `/styles.css` e `/app.js` retornam HTTP 200.
 
 ### Porta 8009 já está em uso
 
