@@ -202,22 +202,6 @@ async function loadContainers() {
   }
 }
 
-async function loadContainers() {
-  if (containersLoading) return;
-  containersLoading = true;
-  const button = $("refresh-containers");
-  button.disabled = true;
-  containersEl.innerHTML = loadingState("Carregando containers...");
-  try {
-    renderContainers(await api("/api/containers"));
-  } catch (err) {
-    renderContainers({ ok: false, error: err.message });
-  } finally {
-    containersLoading = false;
-    button.disabled = false;
-  }
-}
-
 containersEl.addEventListener("click", (event) => {
   const reload = event.target.closest('[data-action="reload-containers"]');
   if (reload) {
