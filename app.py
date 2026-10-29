@@ -492,6 +492,61 @@ def api_tailscale_service_provision(name):
     }), 200
 
 
+@app.route("/api/tailscale/services/<name>/provision-step", methods=["POST"])
+@require_auth
+def api_tailscale_service_provision_step(name):
+    resolved, err = validate_service_name(name)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+
+    data = request.get_json(silent=True) or {}
+    step_number = data.get("step", 1)
+    tag = str(data.get("tag", "")).strip()
+    if not tag:
+        return jsonify({"ok": False, "error": "Tag e obrigatoria."}), 400
+    if not tag.startswith("tag:"):
+        tag = "tag:" + tag
+
+    try:
+        local_port = int(data.get("port"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Porta invalida."}), 400
+    if not 1 <= local_port <= 65535:
+        return jsonify({"ok": False, "error": "A porta deve estar entre 1 e 65535."}), 400
+
+    use_https = bool(data.get("https"))
+    scheme = "https+insecure://" if use_https else "http://"
+    device_id = TAILSCALE_DEVICE_ID
+    if not device_id:
+        return jsonify({"ok": False, "error": "TAILSCALE_DEVICE_ID nao configurado."}), 400
+
+    if step_number == 1:
+        # Etapa 1: criar/atualizar servico na Tailnet via API
+        log.info("Provisionamento passo 1: criar servico svc:%s na tailnet %s", resolved, TAILSCALE_TAILNET)
+        body = {
+            "name": "svc:" + resolved,
+            "displayName": resolved,
+            "comment": "Criado via Tailscale Serve UI",
+            "ports": ["tcp:443"],
+            "tags": [tag],
+        }
+        status, payload = tailscale_api_request("PUT", "/tailnet/%s/services/svc:%s" % (TAILSCALE_TAILNET, resolved), body)
+        if not status or status >= 400:
+            return jsonify({
+                "ok": False,
+                "step": "api-create",
+                "error": payload.get("error", "Falha ao criar servico na Tailnet.") if payload else "Sem resposta da API",
+                "apiResponse": payload,
+            }), 502
+        return jsonify({
+            "ok": True,
+            "step": "api-create",
+            "message": "Servico criado na Tailnet.",
+        }), 200
+
+    return jsonify({"ok": False, "error": "Passo nao suportado neste endpoint."}), 400
+
+
 # ---------------------------------------------------------------------------
 # API serve / clear (CLI local)
 # ---------------------------------------------------------------------------

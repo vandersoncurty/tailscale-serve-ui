@@ -1,6 +1,17 @@
+window.addEventListener("error", (event) => {
+  console.error("Erro não capturado:", event.message, "em", event.filename, "linha", event.lineno);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("Promise rejeitada não tratada:", event.reason);
+});
+
 const CFG = { servePort: "443", targetHost: "127.0.0.1", apiConfigured: false, tailnet: "-", deviceId: "" };
 const SERVICE_RE_LOCAL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const $ = (id) => document.getElementById(id);
+const $ = (id) => {
+  const el = document.getElementById(id);
+  if (!el) console.warn("Elemento não encontrado no DOM: #" + id);
+  return el;
+};
 const service = $("service");
 const port = $("port");
 const tag = $("tag");
@@ -323,25 +334,103 @@ $("copy-command").addEventListener("click", copyCommand);
 $("refresh").addEventListener("click", refreshServices);
 $("refresh-containers").addEventListener("click", loadContainers);
 
+const PIPELINE_STEPS = [
+  { id: "step-1", iconId: "step-1-icon", labelId: "step-1-label", name: "Criar serviço na Tailnet" },
+  { id: "step-2", iconId: "step-2-icon", labelId: "step-2-label", name: "Executar comando no host" },
+  { id: "step-3", iconId: "step-3-icon", labelId: "step-3-label", name: "Aprovar no device" },
+];
+
+const pipelineEl = $("pipeline");
+
+function setPipelineStep(index, state) {
+  const step = PIPELINE_STEPS[index];
+  const icon = $(step.iconId);
+  const label = $(step.labelId);
+  icon.className = "pipeline-step-icon";
+  label.className = "pipeline-step-label";
+  label.textContent = step.name;
+
+  if (state === "loading") {
+    icon.classList.add("pipeline-step-icon--loading");
+    icon.textContent = "⏳";
+    label.classList.add("pipeline-step-label--loading");
+    label.textContent = step.name + "…";
+  } else if (state === "done") {
+    icon.classList.add("pipeline-step-icon--done");
+    icon.textContent = "✔";
+    label.classList.add("pipeline-step-label--done");
+  } else if (state === "error") {
+    icon.classList.add("pipeline-step-icon--error");
+    icon.textContent = "✖";
+    label.classList.add("pipeline-step-label--error");
+  } else {
+    icon.textContent = "⏳";
+  }
+}
+
+function resetPipeline() {
+  pipelineEl.hidden = true;
+  PIPELINE_STEPS.forEach((_, i) => setPipelineStep(i, "idle"));
+}
+
+function showPipeline() {
+  pipelineEl.hidden = false;
+}
+
+async function runStep1(name, tagValue) {
+  setPipelineStep(0, "loading");
+  const body = {
+    name: name,
+    port: Number(port.value),
+    tag: tagValue,
+    https: https.checked,
+  };
+  const data = await api("/api/tailscale/services/" + name + "/provision-step", { step: 1, ...body });
+  return data;
+}
+
+async function runStep2(name) {
+  setPipelineStep(1, "loading");
+  const payload = {
+    service: name,
+    port: Number(port.value),
+    https: https.checked,
+  };
+  const data = await api("/api/serve", payload);
+  return data;
+}
+
+async function runStep3(name) {
+  setPipelineStep(2, "loading");
+  const data = await api("/api/tailscale/services/" + name + "/device/" + CFG.deviceId + "/approved", { approved: true });
+  return data;
+}
+
 async function provisionService() {
-  clearSteps();
+  resetPipeline();
+  showPipeline();
+
   const name = service.value.trim().toLowerCase();
   if (!SERVICE_RE_LOCAL.test(name)) {
+    setPipelineStep(0, "error");
     showStep("Nome de serviço inválido. Use letras minúsculas, números e hífens.", false);
     return;
   }
   const tagValue = tag.value.trim();
   if (!tagValue) {
+    setPipelineStep(0, "error");
     showStep("Tag é obrigatória.", false);
     return;
   }
   try {
     const portNum = Number(port.value);
     if (!portNum || portNum < 1 || portNum > 65535) {
+      setPipelineStep(0, "error");
       showStep("Porta inválida.", false);
       return;
     }
   } catch (err) {
+    setPipelineStep(0, "error");
     showStep("Porta inválida.", false);
     return;
   }
@@ -350,29 +439,50 @@ async function provisionService() {
   submit.textContent = "Processando...";
 
   try {
-    const payload = {
-      service: name,
-      port: Number(port.value),
-      tag: tagValue,
-      https: https.checked,
-    };
-    const data = await api("/api/tailscale/services/" + name + "/provision", payload);
-
-    if (data.ok) {
-      showStep("Sucesso: serviço criado, executado e aprovado na Tailnet.", true);
-      showOutput("$ " + (data.command || "") + "\n" + (data.message || "Serviço provisionado com sucesso."), true);
-      refreshServices();
-    } else {
-      const stepLabel = {
-        "api-create": "Etapa 1/3: criar serviço na Tailnet",
-        "local-serve": "Etapa 2/3: executar tailscale serve no host",
-        "api-approve": "Etapa 3/3: aprovar serviço no device",
-      }[data.step] || "Etapa desconhecida";
-      showStep(stepLabel + " falhou: " + (data.error || "erro desconhecido."), false);
-      showOutput("$ " + (data.command || "") + "\n" + (data.error || ""), false);
+    // Etapa 1: criar serviço na Tailnet via API
+    try {
+      await runStep1(name, tagValue);
+      setPipelineStep(0, "done");
+    } catch (err) {
+      setPipelineStep(0, "error");
+      showStep("Etapa 1/3 falhou: criar serviço na Tailnet — " + esc(err.message), false);
+      showOutput(err.message, false);
+      submit.disabled = false;
+      submit.textContent = "Expor serviço";
+      return;
     }
+
+    // Etapa 2: executar tailscale serve no host
+    try {
+      await runStep2(name);
+      setPipelineStep(1, "done");
+    } catch (err) {
+      setPipelineStep(1, "error");
+      showStep("Etapa 2/3 falhou: executar comando no host — " + esc(err.message), false);
+      showOutput(err.message, false);
+      submit.disabled = false;
+      submit.textContent = "Expor serviço";
+      return;
+    }
+
+    // Etapa 3: aprovar serviço no device via API
+    try {
+      await runStep3(name);
+      setPipelineStep(2, "done");
+    } catch (err) {
+      setPipelineStep(2, "error");
+      showStep("Etapa 3/3 falhou: aprovar serviço no device — " + esc(err.message), false);
+      showOutput(err.message, false);
+      submit.disabled = false;
+      submit.textContent = "Expor serviço";
+      return;
+    }
+
+    showStep("Sucesso: serviço criado, executado e aprovado na Tailnet.", true);
+    showOutput("Serviço provisionado com sucesso nas 3 etapas.", true);
+    refreshServices();
   } catch (err) {
-    showStep("Falha ao provisionar serviço: " + esc(err.message), false);
+    showStep("Falha inesperada: " + esc(err.message), false);
     showOutput(err.message, false);
   } finally {
     submit.disabled = false;
@@ -383,16 +493,16 @@ async function provisionService() {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   out.hidden = true;
-  clearSteps();
+  resetPipeline();
 
   if (useApi.checked) {
     try {
       await provisionService();
     } catch (err) {
-      showStep("Falha inesperada ao provisionar servico: " + esc(err.message), false);
+      showStep("Falha inesperada ao provisionar serviço: " + esc(err.message), false);
       showOutput(err.message, false);
       submit.disabled = false;
-      submit.textContent = "Expor servico";
+      submit.textContent = "Expor serviço";
     }
     return;
   }

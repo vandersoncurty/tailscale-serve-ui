@@ -510,6 +510,93 @@ input[type="number"] {
   color: var(--err);
 }
 
+.pipeline {
+  margin: 16px 0 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.pipeline-title {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.pipeline-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pipeline-step-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  transition: background-color 140ms ease-out, color 140ms ease-out, transform 120ms ease-out;
+}
+
+.pipeline-step-icon--loading {
+  background: var(--accent-soft);
+  color: var(--accent);
+  animation: pipeline-pulse 1.5s ease-in-out infinite;
+}
+
+.pipeline-step-icon--done {
+  background: var(--ok);
+  color: #07111c;
+}
+
+.pipeline-step-icon--error {
+  background: var(--err);
+  color: #ffffff;
+}
+
+.pipeline-step-label {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  transition: color 140ms ease-out;
+}
+
+.pipeline-step-label--done {
+  color: var(--ok);
+  font-weight: 500;
+}
+
+.pipeline-step-label--error {
+  color: var(--err);
+  font-weight: 500;
+}
+
+.pipeline-connector {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 2px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+@keyframes pipeline-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+
 .output--ok {
   border-color: rgba(70, 211, 138, 0.35);
 }
