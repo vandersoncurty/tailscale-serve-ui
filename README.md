@@ -6,7 +6,9 @@ O projeto roda em um container Docker, mas executa o comando no `tailscaled` do 
 
 ## Recursos
 
-- Nome do serviço e porta local configuráveis
+- Detecção de containers Docker em execução
+- Preenchimento automático do nome e da porta a partir do container
+- Nome do serviço e porta local editáveis
 - Opção para indicar que o serviço de destino já usa HTTPS (`https+insecure://`)
 - Pré-visualização do comando que será executado
 - Listagem dos serviços configurados
@@ -20,6 +22,7 @@ O projeto roda em um container Docker, mas executa o comando no `tailscaled` do 
 - Tailscale instalado e `tailscaled` em execução no host
 - Binário `tailscale` acessível no host (por padrão `/usr/bin/tailscale`)
 - Socket do `tailscaled` acessível (por padrão `/var/run/tailscale`)
+- Socket do Docker acessível (por padrão `/var/run/docker.sock`, necessário para a detecção de containers)
 - Permissão para executar comandos `tailscale serve` (o container roda como `root` por padrão)
 
 ## Como funciona
@@ -28,6 +31,7 @@ O container monta:
 
 - `/var/run/tailscale` para falar com o `tailscaled` do host
 - `/usr/bin/tailscale` para executar a CLI dentro do container
+- `/var/run/docker.sock` para listar os containers em execução
 
 Os comandos gerados são equivalentes a:
 
@@ -69,13 +73,27 @@ Para parar:
 docker compose down
 ```
 
+## Detecção de containers
+
+A interface consulta a API do Docker e lista os containers em execução. Para cada container são exibidas as portas TCP publicadas no host.
+
+Ao clicar em uma porta, o formulário é preenchido com:
+
+- Nome do serviço normalizado a partir do nome do container (letras minúsculas, números e hífens)
+- Porta publicada no host
+
+O nome do serviço continua editável antes de clicar em **Expor serviço**.
+
+Containers em `network_mode: host` ou sem portas publicadas podem ser usados digitando a porta manualmente. A interface apenas consulta o Docker; nenhum container é alterado.
+
 ## Usando a interface
 
-1. Informe o nome do serviço, por exemplo `meu-servico`
-2. Informe a porta local onde o serviço está rodando
-3. Marque **O serviço de destino já usa HTTPS** quando o destino tiver certificado autoassinado ou inválido
-4. Confira o comando exibido
-5. Clique em **Expor serviço**
+1. Opcionalmente, clique em uma porta de um container em execução para preencher os campos
+2. Ajuste o nome do serviço, por exemplo `meu-servico`
+3. Confirme a porta local onde o serviço está rodando
+4. Marque **O serviço de destino já usa HTTPS** quando o destino tiver certificado autoassinado ou inválido
+5. Confira o comando exibido
+6. Clique em **Expor serviço**
 
 O serviço será publicado como:
 
@@ -96,6 +114,7 @@ As variáveis ficam na seção `environment` do `docker-compose.yml`.
 | `UI_USER` | vazio | Usuário do HTTP Basic Auth |
 | `UI_PASSWORD` | vazio | Senha do HTTP Basic Auth; se vazio, a autenticação fica desativada |
 | `TAILSCALE_BIN` | `/usr/local/bin/tailscale` | Caminho da CLI do Tailscale dentro do container |
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | Caminho do socket do Docker usado para detectar containers |
 | `SERVE_HTTPS_PORT` | `443` | Porta HTTPS publicada pelo `tailscale serve` |
 | `TARGET_HOST` | `127.0.0.1` | Host de destino usado no comando |
 | `PYTHONUNBUFFERED` | `1` | Saída Python sem buffer nos logs |
@@ -143,7 +162,11 @@ casaos-cli app-management apply tailscale-serve-ui -f docker-compose.yml
 
 ## Segurança
 
-O container recebe acesso ao socket do `tailscaled`, o que dá controle amplo sobre a configuração do Tailscale no host. Portanto:
+O container recebe acesso ao socket do `tailscaled`, o que dá controle amplo sobre a configuração do Tailscale no host.
+
+Para a detecção de containers, o socket do Docker também é montado. Esse acesso equivale a controle administrativo do Docker no host. A aplicação usa o socket apenas para consultar containers, mas o acesso ao socket em si deve ser tratado como root. Se não precisar da detecção automática, remova o volume do Docker e a variável `DOCKER_SOCKET` do `docker-compose.yml`.
+
+Portanto:
 
 - Execute apenas em máquinas confiáveis
 - Não exponha a porta `8009` publicamente sem autenticação
@@ -174,6 +197,17 @@ Se o container iniciou antes do `tailscaled`, reinicie o container:
 ```bash
 docker restart tailscale-serve-ui
 ```
+
+### Containers Docker não aparecem
+
+Verifique se o socket do Docker existe no host e se foi montado no container:
+
+```bash
+ls -l /var/run/docker.sock
+docker inspect tailscale-serve-ui --format '{{json .Mounts}}'
+```
+
+Se o socket estiver em outro caminho, ajuste o volume e a variável `DOCKER_SOCKET` no `docker-compose.yml`. Sem o socket, a interface continua funcionando com preenchimento manual de nome e porta.
 
 ### Porta 8009 já está em uso
 

@@ -5,12 +5,15 @@ import html
 import json
 import os
 import re
+import socket
 import subprocess
+from http.client import HTTPConnection, HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8009"))
 TAILSCALE = os.environ.get("TAILSCALE_BIN", "tailscale")
+DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
 UI_USER = os.environ.get("UI_USER", "")
 UI_PASSWORD = os.environ.get("UI_PASSWORD", "")
 SERVE_HTTPS_PORT = os.environ.get("SERVE_HTTPS_PORT", "443")
@@ -159,6 +162,25 @@ PAGE = r"""<!DOCTYPE html>
   .route b { color: var(--text); font-weight: 500; }
   .route .arrow { color: var(--muted); }
   .route .target { color: #9fe3bd; }
+  .docker-item {
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; background: rgba(8,12,17,.55);
+  }
+  .docker-item + .docker-item { margin-top: 10px; }
+  .docker-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .docker-name { font-weight: 650; font-size: 14px; }
+  .docker-image { color: var(--muted); font-size: 11.5px; margin-top: 3px; word-break: break-all; }
+  .ports { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 11px; }
+  .ports .label { color: var(--muted); font-size: 11.5px; margin-right: 2px; }
+  button.chip {
+    padding: 6px 10px; font-size: 12px; font-weight: 500;
+    color: var(--text); background: rgba(79,156,255,.08);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  button.chip:hover { background: rgba(79,156,255,.16); border-color: var(--accent); filter: none; }
+  button.small { padding: 7px 11px; font-size: 12px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin: -8px 0 14px; }
   .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
   .foot { max-width: 900px; margin: 0 auto; padding: 0 20px 34px; color: #5f7084; font-size: 11.5px; line-height: 1.6; }
   .foot code { color: #7f93aa; }
@@ -177,11 +199,20 @@ PAGE = r"""<!DOCTYPE html>
 </header>
 <main>
   <section class="card">
+    <div class="row">
+      <h2>Containers em execução</h2>
+      <button class="ghost" id="refresh-containers" type="button">Atualizar</button>
+    </div>
+    <p class="hint">Clique em uma porta publicada para preencher nome e porta. O nome do serviço pode ser editado antes de expor.</p>
+    <div id="containers"><div class="empty">Carregando...</div></div>
+  </section>
+
+  <section class="card">
     <h2>Novo serviço</h2>
     <form id="form">
       <div class="grid">
         <label>Nome do serviço
-          <input id="service" type="text" placeholder="meu-servico" autocomplete="off" spellcheck="false" required pattern="[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?">
+          <input id="service" type="text" placeholder="meu-servico" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?">
         </label>
         <label>Porta local
           <input id="port" type="number" min="1" max="65535" placeholder="8080" required>
@@ -220,6 +251,7 @@ const $ = (id) => document.getElementById(id);
 const service = $("service"), port = $("port"), https = $("https");
 const cmdEl = $("cmd"), out = $("out"), form = $("form"), submit = $("submit");
 const list = $("list"), conn = $("conn"), connText = $("conn-text");
+const containersEl = $("containers");
 
 $("serve-port").textContent = CFG.servePort;
 
@@ -258,6 +290,61 @@ async function api(path, body) {
 function esc(v) {
   return String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
+
+function sanitizeServiceName(value) {
+  const name = String(value).toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 63)
+    .replace(/-+$/g, "");
+  return name || "servico";
+}
+
+function renderContainers(data) {
+  if (!data.ok) {
+    containersEl.innerHTML = '<div class="empty">' + esc(data.error || "Docker indisponível.") +
+      ' Você ainda pode informar nome e porta manualmente.</div>';
+    return;
+  }
+  const containers = data.containers || [];
+  if (!containers.length) {
+    containersEl.innerHTML = '<div class="empty">Nenhum container em execução encontrado.</div>';
+    return;
+  }
+  containersEl.innerHTML = containers.map(item => {
+    const ports = item.ports || [];
+    const actions = ports.length
+      ? ports.map(p => '<button class="chip" type="button" data-container="' + esc(item.name) +
+          '" data-port="' + p.public + '" title="Porta publicada: ' + p.public +
+          ' | Porta interna: ' + esc(p.private) + '">' + p.public +
+          (p.private && p.private !== p.public ? ' → ' + p.private : '') + '</button>').join("")
+      : '<button class="ghost small" type="button" data-container="' + esc(item.name) + '">Usar nome</button>';
+    return '<div class="docker-item"><div class="docker-head"><div><div class="docker-name">' + esc(item.name) +
+      '</div><div class="docker-image">' + esc(item.image) + '</div></div></div>' +
+      '<div class="ports"><span class="label">' + (ports.length ? "Portas publicadas:" : "Sem portas TCP publicadas.") +
+      '</span>' + actions + '</div></div>';
+  }).join("");
+}
+
+async function loadContainers() {
+  containersEl.innerHTML = '<div class="empty">Carregando...</div>';
+  try {
+    renderContainers(await api("/api/containers"));
+  } catch (err) {
+    containersEl.innerHTML = '<div class="empty">Não foi possível consultar o Docker: ' + esc(err.message) + '</div>';
+  }
+}
+
+containersEl.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-container]");
+  if (!button) return;
+  service.value = sanitizeServiceName(button.dataset.container);
+  if (button.dataset.port) port.value = button.dataset.port;
+  renderCommand();
+  service.focus();
+  service.select();
+});
 
 function renderStatus(data) {
   if (!data.ok) {
@@ -328,7 +415,9 @@ form.addEventListener("submit", async (e) => {
 });
 
 $("refresh").addEventListener("click", refresh);
+$("refresh-containers").addEventListener("click", loadContainers);
 refresh();
+loadContainers();
 setInterval(refresh, 10000);
 </script>
 </body>
@@ -349,6 +438,76 @@ def run_tailscale(args, timeout=30):
         return 127, "", "Binário 'tailscale' não encontrado."
     except subprocess.TimeoutExpired:
         return 124, "", "O comando Tailscale excedeu o tempo limite."
+
+
+class UnixHTTPConnection(HTTPConnection):
+    def __init__(self, socket_path, timeout=5):
+        super().__init__("localhost", timeout=timeout)
+        self.socket_path = socket_path
+
+    def connect(self):
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self.socket_path)
+        self.sock = sock
+
+
+def docker_get_json(path):
+    connection = UnixHTTPConnection(DOCKER_SOCKET)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        body = response.read()
+        if response.status != 200:
+            raise RuntimeError("Docker API respondeu HTTP %d" % response.status)
+        return json.loads(body.decode("utf-8"))
+    finally:
+        connection.close()
+
+
+def containers_payload():
+    if not os.path.exists(DOCKER_SOCKET):
+        return {
+            "ok": False,
+            "error": "Socket do Docker não encontrado em %s." % DOCKER_SOCKET,
+            "containers": [],
+        }
+    try:
+        data = docker_get_json("/containers/json?all=0")
+    except (OSError, HTTPException, RuntimeError, ValueError) as exc:
+        return {
+            "ok": False,
+            "error": "Não foi possível consultar o Docker: %s" % exc,
+            "containers": [],
+        }
+    if not isinstance(data, list):
+        return {"ok": False, "error": "Resposta inesperada da API do Docker.", "containers": []}
+
+    containers = []
+    for item in data:
+        names = item.get("Names") or []
+        name = names[0].lstrip("/") if names else (item.get("Id") or "")[:12]
+        ports = []
+        seen = set()
+        for entry in item.get("Ports") or []:
+            if entry.get("Type") != "tcp":
+                continue
+            public = entry.get("PublicPort")
+            if not public or public in seen:
+                continue
+            seen.add(public)
+            ports.append({
+                "public": int(public),
+                "private": int(entry.get("PrivatePort") or 0),
+            })
+        ports.sort(key=lambda port: port["public"])
+        containers.append({
+            "name": name,
+            "image": item.get("Image", ""),
+            "ports": ports,
+        })
+    containers.sort(key=lambda container: container["name"].lower())
+    return {"ok": True, "containers": containers}
 
 
 def status_payload():
@@ -436,6 +595,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, page, "text/html; charset=utf-8")
         if self.path == "/api/status":
             return self._json(200, status_payload())
+        if self.path == "/api/containers":
+            return self._json(200, containers_payload())
         if self.path == "/api/health":
             return self._json(200, {"ok": True})
         return self._json(404, {"ok": False, "error": "Não encontrado"})

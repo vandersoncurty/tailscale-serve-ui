@@ -11,6 +11,7 @@ services:
       UI_USER: ""
       UI_PASSWORD: ""
       TAILSCALE_BIN: "/usr/local/bin/tailscale"
+      DOCKER_SOCKET: "/var/run/docker.sock"
       SERVE_HTTPS_PORT: "443"
       TARGET_HOST: "127.0.0.1"
       PYTHONUNBUFFERED: "1"
@@ -26,6 +27,10 @@ services:
       - type: bind
         source: /usr/bin/tailscale
         target: /usr/local/bin/tailscale
+        read_only: true
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
         read_only: true
     labels:
       icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/tailscale.png
