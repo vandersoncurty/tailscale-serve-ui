@@ -11,6 +11,8 @@ services:
             resources:
                 limits:
                     memory: "3967811584"
+        env_file:
+            - .env
         environment:
             DOCKER_SOCKET: /var/run/docker.sock
             HOST: 0.0.0.0
@@ -19,13 +21,8 @@ services:
             SERVE_HTTPS_PORT: "443"
             TAILSCALE_API_BASE_URL: https://api.tailscale.com/api/v2
             TAILSCALE_API_TIMEOUT: "10"
-            TAILSCALE_API_TOKEN: REDACTED
             TAILSCALE_BIN: /usr/local/bin/tailscale
-            TAILSCALE_DEVICE_ID: REDACTED
-            TAILSCALE_TAILNET: REDACTED
             TARGET_HOST: 127.0.0.1
-            UI_PASSWORD: REDACTED
-            UI_USER: REDACTED
         hostname: tailscale-serve-ui
         image: tailscale-serve-ui:latest
         labels:
