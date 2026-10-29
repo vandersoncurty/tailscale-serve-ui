@@ -121,15 +121,11 @@ function emptyState(title, message, actionHtml) {
 function isServiceRegistered(containerName, registeredServices) {
   const list = Array.isArray(registeredServices) ? registeredServices : [];
   const normalized = sanitizeServiceName(containerName);
-  // Match exato com ou sem prefixo svc:
-  if (list.some((s) => s === normalized || s === "svc:" + normalized)) {
-    return true;
-  }
-  // Match parcial como fallback
-  if (list.some((s) => normalized.includes(s) || s.includes(normalized))) {
-    return true;
-  }
-  return false;
+  const exact = list.some((s) => s === normalized || s === "svc:" + normalized);
+  const partial = list.some((s) => normalized.includes(s) || s.includes(normalized));
+  const found = exact || partial;
+  console.log("[DEBUG] isServiceRegistered: container=", containerName, "normalized=", normalized, "list=", list, "exact=", exact, "partial=", partial, "found=", found);
+  return found;
 }
 
 function renderContainers(data, registeredServices, showAll) {
@@ -163,6 +159,7 @@ function renderContainers(data, registeredServices, showAll) {
 
   containersEl.innerHTML = containers.map((item) => {
     const registered = isServiceRegistered(item.name, registeredServices);
+    console.log("[DEBUG] renderContainers: container=", item.name, "registered=", registered);
     const statusDot = registered
       ? '<span class="container-status-dot container-status-dot--registered" aria-hidden="true"></span>'
       : '<span class="container-status-dot container-status-dot--pending" aria-hidden="true"></span>';
@@ -224,6 +221,7 @@ async function loadContainers() {
       registeredServices = [];
     }
 
+    console.log("[DEBUG] loadContainers: showAll=", showAll, "registeredServices=", registeredServices, "containersCount=", containersData.containers?.length);
     renderContainers(containersData, registeredServices, showAll);
   } catch (err) {
     renderContainers({ ok: false, error: err.message });
