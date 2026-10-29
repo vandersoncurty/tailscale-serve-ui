@@ -41,7 +41,7 @@ TARGET_HOST = os.environ.get("TARGET_HOST", "127.0.0.1")
 SERVICE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 TAILSCALE_API_TOKEN = os.environ.get("TAILSCALE_API_TOKEN", "")
-TAILSCALE_API_BASE_URL = os.environ.get("TAILSCALE_API_BASE_URL", "https://api.tailscale.com").rstrip("/")
+TAILSCALE_API_BASE_URL = os.environ.get("TAILSCALE_API_BASE_URL", "https://api.tailscale.com/api/v2").rstrip("/")
 TAILSCALE_TAILNET = os.environ.get("TAILSCALE_TAILNET", "-")
 TAILSCALE_DEVICE_ID = os.environ.get("TAILSCALE_DEVICE_ID", "")
 TAILSCALE_API_TIMEOUT = int(os.environ.get("TAILSCALE_API_TIMEOUT", "10"))

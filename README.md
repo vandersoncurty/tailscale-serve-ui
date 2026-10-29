@@ -146,7 +146,7 @@ As variáveis ficam na seção `environment` do `docker-compose.yml`.
 | `SERVE_HTTPS_PORT` | `443` | Porta HTTPS publicada pelo `tailscale serve` |
 | `TARGET_HOST` | `127.0.0.1` | Host de destino usado no comando |
 | `TAILSCALE_API_TOKEN` | vazio | Access token da API Tailscale (escopos mínimos: `services`, `services:read`, `devices:core`) |
-| `TAILSCALE_API_BASE_URL` | `https://api.tailscale.com` | Base da API REST do Tailscale |
+| `TAILSCALE_API_BASE_URL` | `https://api.tailscale.com/api/v2` | Base da API REST do Tailscale |
 | `TAILSCALE_TAILNET` | `-` | ID da tailnet (`-` = default do token) |
 | `TAILSCALE_DEVICE_ID` | vazio | ID/nodeId do device onde o serviço será aprovado |
 | `TAILSCALE_API_TIMEOUT` | `10` | Timeout da chamada à API em segundos |

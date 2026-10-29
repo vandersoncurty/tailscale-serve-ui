@@ -17,12 +17,12 @@ services:
             PORT: "8009"
             PYTHONUNBUFFERED: "1"
             SERVE_HTTPS_PORT: "443"
-            TAILSCALE_API_BASE_URL: https://api.tailscale.com
+            TAILSCALE_API_BASE_URL: https://api.tailscale.com/api/v2
             TAILSCALE_API_TIMEOUT: "10"
             TAILSCALE_API_TOKEN: REDACTED
             TAILSCALE_BIN: /usr/local/bin/tailscale
             TAILSCALE_DEVICE_ID: debian
-            TAILSCALE_TAILNET: REDACTED
+            TAILSCALE_TAILNET: "-"
             TARGET_HOST: 127.0.0.1
             UI_PASSWORD: REDACTED
             UI_USER: REDACTED
