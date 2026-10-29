@@ -637,6 +637,42 @@ input[type="number"] {
   min-width: 0;
 }
 
+.panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.container-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.container-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.container-status-dot--registered {
+  background: var(--ok);
+}
+
+.container-status-dot--pending {
+  background: var(--err);
+}
+
+.container-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
 .container-name {
   overflow: hidden;
   color: var(--text);

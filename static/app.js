@@ -118,7 +118,12 @@ function emptyState(title, message, actionHtml) {
     esc(message) + "</p></div>" + (actionHtml || "") + "</div>";
 }
 
-function renderContainers(data) {
+function isServiceRegistered(containerName, registeredServices) {
+  const normalized = sanitizeServiceName(containerName);
+  return registeredServices.some((s) => s === normalized || s === "svc:" + normalized);
+}
+
+function renderContainers(data, registeredServices, showAll) {
   if (!data.ok) {
     containersEl.innerHTML = emptyState(
       "Docker indisponível",
@@ -128,17 +133,35 @@ function renderContainers(data) {
     return;
   }
 
-  const containers = data.containers || [];
+  let containers = data.containers || [];
+  if (!showAll) {
+    containers = containers.filter((c) => !isServiceRegistered(c.name, registeredServices));
+  }
+
   if (!containers.length) {
+    const msg = showAll
+      ? "Nenhum container em execução."
+      : "Todos os containers já estão registrados no Tailscale.";
     containersEl.innerHTML = emptyState(
-      "Nenhum container em execução",
-      "Inicie um container ou informe nome e porta manualmente.",
+      msg,
+      showAll
+        ? "Inicie um container ou informe nome e porta manualmente."
+        : "Marque \"Exibir todos\" para ver todos os containers.",
       '<button class="button button--quiet button--small" type="button" data-action="reload-containers">Atualizar lista</button>'
     );
     return;
   }
 
   containersEl.innerHTML = containers.map((item) => {
+    const registered = isServiceRegistered(item.name, registeredServices);
+    const statusDot = registered
+      ? '<span class="container-status-dot container-status-dot--registered" aria-hidden="true"></span>'
+      : '<span class="container-status-dot container-status-dot--pending" aria-hidden="true"></span>';
+    const statusLabel = registered ? "Registrado no Tailscale" : "Não registrado";
+    const hint = registered
+      ? ""
+      : '<p class="container-hint">Não está registrado no Tailscale. Clique em uma porta para expor.</p>';
+
     const ports = item.ports || [];
     const actions = ports.length
       ? ports.map((p) => {
@@ -156,9 +179,41 @@ function renderContainers(data) {
 
     return '<article class="container-item"><div><div class="container-name" title="' +
       esc(item.name) + '">' + esc(item.name) + '</div><div class="container-image" title="' +
-      esc(item.image) + '">' + esc(item.image) + '</div></div><div class="port-row">' +
+      esc(item.image) + '">' + esc(item.image) + '</div></div>' +
+      '<div class="container-status-badge">' + statusDot + '<span>' + statusLabel + "</span></div>" +
+      hint +
+      '</div><div class="port-row">' +
       (ports.length ? '<span class="port-label">TCP</span>' : "") + actions + "</div></article>";
   }).join("");
+}
+
+async function loadContainers() {
+  if (containersLoading) return;
+  containersLoading = true;
+  const button = $("refresh-containers");
+  button.disabled = true;
+  containersEl.innerHTML = loadingState("Carregando containers...");
+  try {
+    const containersData = await api("/api/containers");
+    const showAll = $("show-all-containers").checked;
+
+    let registeredServices = [];
+    if (!showAll) {
+      try {
+        const statusData = await api("/api/status");
+        registeredServices = (statusData.services || []).map((s) => s.name.replace(/^svc:/, ""));
+      } catch (err) {
+        registeredServices = [];
+      }
+    }
+
+    renderContainers(containersData, registeredServices, showAll);
+  } catch (err) {
+    renderContainers({ ok: false, error: err.message });
+  } finally {
+    containersLoading = false;
+    button.disabled = false;
+  }
 }
 
 async function loadContainers() {
@@ -576,3 +631,5 @@ async function init() {
 }
 
 init();
+
+$("show-all-containers").addEventListener("change", loadContainers);

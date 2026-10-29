@@ -125,7 +125,13 @@
             <h2 id="containers-title">Containers</h2>
             <p class="panel-sub">Portas publicadas disponíveis.</p>
           </div>
-          <button class="button button--quiet button--small" id="refresh-containers" type="button">Atualizar</button>
+          <div class="panel-controls">
+            <button class="button button--quiet button--small" id="refresh-containers" type="button">Atualizar</button>
+            <label class="check" for="show-all-containers">
+              <input id="show-all-containers" name="show-all-containers" type="checkbox">
+              <span>Exibir todos</span>
+            </label>
+          </div>
         </header>
         <p class="hint">Clique em uma porta para preencher o formulário.</p>
         <div class="container-list" id="containers">
