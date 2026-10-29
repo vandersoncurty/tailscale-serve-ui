@@ -21,8 +21,8 @@ services:
             TAILSCALE_API_TIMEOUT: "10"
             TAILSCALE_API_TOKEN: REDACTED
             TAILSCALE_BIN: /usr/local/bin/tailscale
-            TAILSCALE_DEVICE_ID: debian
-            TAILSCALE_TAILNET: "-"
+            TAILSCALE_DEVICE_ID: REDACTED
+            TAILSCALE_TAILNET: REDACTED
             TARGET_HOST: 127.0.0.1
             UI_PASSWORD: REDACTED
             UI_USER: REDACTED
